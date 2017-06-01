@@ -89,15 +89,23 @@ replicated_set_test(Config) ->
     CommitTimes = lists:map(fun(N) ->
 				    lager:info("Writing ~p to set", [N]),
 				    {ok, CommitTime} = update_sets(Node1, [Key1], [{add, N}], ignore),
-				    timer:sleep(200),
 				    CommitTime
-			    end, lists:seq(1, 5)),
+			    end, lists:seq(1,100)),
 
     LastCommitTime = lists:last(CommitTimes),
     lager:info("last commit time was ~p.", [LastCommitTime]),
 
     %% now read on Node2
-    %%check_read_key(Node2, Key1, Type, lists:seq(1,5), LastCommitTime, static),
+    check_read_key(Node2, Key1, Type, lists:seq(1,100), LastCommitTime, static),
+	timer:sleep(1000),
+	CommitTimes2 = lists:map(fun(N) ->
+				    lager:info("Writing ~p to set", [N]),
+					timer:sleep(2000),
+				    {ok, CommitTime} = update_sets(Node1, [Key1], [{remove, N}], ignore),
+				    CommitTime
+			    end, lists:seq(1,10)),
+timer:sleep(1000),
+check_read_key(Node2, Key1, Type, lists:seq(11,100), LastCommitTime, static),
     pass.
 
 %% internal
