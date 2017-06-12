@@ -522,6 +522,14 @@ belongs_to_snapshot_op(SSTime, {OpDc, OpCommitTime}, OpSs) ->
     OpSs1 = dict:store(OpDc, OpCommitTime, OpSs),
     not vectorclock:le(OpSs1, SSTime).
 
+adjust_references([]) ->
+	ok;
+adjust_references([{_Clock, {big, _Hash_Range, _Max_Count, _Tree, _Table, _ID, _VV}=BigSet}]|Rest]) ->
+	ok = antidote_crdt_bigset: ref_count_adjust(BigSet, -1),
+	adjust_references(Rest);
+adjust_references([_Entry|Rest]) ->
+	adjust_references(Rest).
+
 %% @doc Operation to insert a Snapshot in the cache and start
 %%      Garbage collection triggered by reads.
 -spec snapshot_insert_gc(key(), vector_orddict:vector_orddict(),
@@ -534,6 +542,8 @@ snapshot_insert_gc(Key, SnapshotDict, ShouldGc, #mat_state{snapshot_cache = Snap
         true ->
             %% snapshots are no longer totally ordered
             PrunedSnapshots = vector_orddict:sublist(SnapshotDict, 1, ?SNAPSHOT_MIN),
+			{OldSnapshots, _Time} = vector_orddict:sublist(SnapshotDict, ?SNAPSHOT_MIN, vector_orddict:size(SnapshotDict)),
+			ok = adjust_references(OldSnapshots),
             FirstOp=vector_orddict:last(PrunedSnapshots),
             {CT, _S} = FirstOp,
             CommitTime = lists:foldl(fun({CT1, _ST}, Acc) ->
