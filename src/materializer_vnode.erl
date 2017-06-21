@@ -80,13 +80,13 @@ start_vnode(I) ->
 read(Key, Type, SnapshotTime, TxId, MatState = #mat_state{ops_cache = OpsCache}) ->
     case ets:info(OpsCache) of
         undefined ->
-            riak_core_vnode_master:sync_command(
+            {ok, Snapshot} = riak_core_vnode_master:sync_command(
                 {MatState#mat_state.partition, node()},
                 {read, Key, Type, SnapshotTime, TxId},
                 materializer_vnode_master,
                 infinity
-            );
-
+            ),
+			{ok, Snapshot};
         _ ->
             internal_read(Key, Type, SnapshotTime, TxId, MatState)
     end.
@@ -220,13 +220,20 @@ handle_command({check_ready}, _Sender, State = #mat_state{partition=Partition, i
     {reply, Result2, State};
 
 handle_command({read, Key, Type, SnapshotTime, TxId}, _Sender, State) ->
-    {reply, read(Key, Type, SnapshotTime, TxId, State), State};
+	Res = read(Key, Type, SnapshotTime, TxId, State),
+    {reply, Res, State};
 
 handle_command({update, Key, DownstreamOp}, _Sender, State) ->
     true = op_insert_gc(Key, DownstreamOp, State),
     {reply, ok, State};
 
 handle_command({store_ss, Key, Snapshot, CommitTime}, _Sender, State) ->
+	case Snapshot#materialized_snapshot.value of
+		{big, _Hash_Range, _Max_Count, Tree, Table, _ID, _VV} ->
+			ok = antidote_crdt_bigset : add_tokens(Tree, Table);
+		_ -> 
+			ok
+		end,
     internal_store_ss(Key, Snapshot, CommitTime, false, State),
     {noreply, State};
 
@@ -375,7 +382,7 @@ get_from_snapshot_cache(TxId, Key, Type, MinSnaphsotTime, State = #mat_state{
         [] ->
             EmptySnapshot = #materialized_snapshot{
                 last_op_id=0,
-                value=clocksi_materializer:new(Type)
+                value= clocksi_materializer:new(Type)
             },
             store_snapshot(TxId, Key, EmptySnapshot, vectorclock:new(), false, State),
             %% Create a base version committed at time ignore, i.e. bottom
@@ -418,6 +425,12 @@ get_from_snapshot_log(Key, Type, SnapshotTime) ->
 ) -> ok.
 
 store_snapshot(TxId, Key, Snapshot, Time, ShouldGC, MatState) ->
+	case Snapshot#materialized_snapshot.value of
+		{big, _Hash_Range, _Max_Count, Tree, Table, _ID, _VV} ->
+			ok = antidote_crdt_bigset : add_tokens(Tree, Table);
+		_ -> 
+			ok
+		end,
     case TxId of
         ignore ->
             internal_store_ss(Key, Snapshot, Time, ShouldGC, MatState),
@@ -489,7 +502,6 @@ materialize_snapshot(TxId, Key, Type, SnapshotTime, ShouldGC, MatState, Snapshot
             case CommitTime of
                 ignore ->
                     {ok, MaterializedSnapshot};
-
                 _ ->
                     %% Check if we need to refresh the cache
                     SufficientOps = OpsAdded >= ?MIN_OP_STORE_SS,
@@ -522,14 +534,35 @@ belongs_to_snapshot_op(SSTime, {OpDc, OpCommitTime}, OpSs) ->
     OpSs1 = dict:store(OpDc, OpCommitTime, OpSs),
     not vectorclock:le(OpSs1, SSTime).
 
-adjust_references([]) ->
-	ok;
-adjust_references([{_Clock, {big, _Hash_Range, _Max_Count, _Tree, _Table, _ID, _VV}=BigSet}]|Rest]) ->
-	ok = antidote_crdt_bigset: ref_count_adjust(BigSet, -1),
-	adjust_references(Rest);
-adjust_references([_Entry|Rest]) ->
-	adjust_references(Rest).
+-spec fill_dict(map(), [antidote_crdt_bigset:tablekey()])-> dict:dict().
+fill_dict(Dict, []) ->
+	Dict;
+fill_dict(Dict, [Head|Rest])->
+	New_Dict = dict:update_counter(Head, -1, Dict),
+	fill_dict(New_Dict, Rest).
 
+adjust_references([], _) ->
+	ok;
+adjust_references([{big, _Hash_Range, _Max_Count, Tree, Table, _ID, _VV}=_BigSet|Rest], KeyDict) ->
+	TableKeys = antidote_crdt_bigset_keytree : get_all(Tree),
+	New_Dict = fill_dict(KeyDict, TableKeys),
+	if 
+		Rest == [] ->
+			List = dict:to_list(New_Dict),
+			antidote_crdt_bigset : remove_tokens(Table, List),
+			antidote_crdt_bigset : delete_old(Table);
+		true ->
+			ok
+	end,
+	adjust_references(Rest, New_Dict);
+adjust_references([_Entry|_Rest], _Dict) ->
+	ok.
+
+get_snapshots([])->
+	[];
+get_snapshots([{_, {_, _, Snapshot}}|Rest])->
+	[Snapshot]++get_snapshots(Rest).
+	
 %% @doc Operation to insert a Snapshot in the cache and start
 %%      Garbage collection triggered by reads.
 -spec snapshot_insert_gc(key(), vector_orddict:vector_orddict(),
@@ -542,8 +575,8 @@ snapshot_insert_gc(Key, SnapshotDict, ShouldGc, #mat_state{snapshot_cache = Snap
         true ->
             %% snapshots are no longer totally ordered
             PrunedSnapshots = vector_orddict:sublist(SnapshotDict, 1, ?SNAPSHOT_MIN),
-			{OldSnapshots, _Time} = vector_orddict:sublist(SnapshotDict, ?SNAPSHOT_MIN, vector_orddict:size(SnapshotDict)),
-			ok = adjust_references(OldSnapshots),
+			{Temp, _} = vector_orddict:sublist(SnapshotDict, ?SNAPSHOT_MIN, ?SNAPSHOT_THRESHOLD),
+			ok = adjust_references(get_snapshots(Temp), dict:new()),
             FirstOp=vector_orddict:last(PrunedSnapshots),
             {CT, _S} = FirstOp,
             CommitTime = lists:foldl(fun({CT1, _ST}, Acc) ->
