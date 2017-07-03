@@ -80,12 +80,6 @@ get_first_id(Tuple) when is_tuple(Tuple) ->
 materialize(Type, TxId, MinSnapshotTime,
             #snapshot_get_response{snapshot_time = SnapshotCommitTime, ops_list = Ops,
                                    materialized_snapshot = #materialized_snapshot{last_op_id = LastOp, value = Snapshot}}) ->
-	if 
-		Type == antidote_crdt_bigset ->
-			antidote_crdt_bigset : ref_count_adjust(Snapshot, 1);
-		true ->
-			ok
-	end,
     FirstId = get_first_id(Ops),
     {ok, OpList, NewLastOp, LastOpCt, IsNewSS} =
         materialize_intern(Type, [], LastOp, FirstId, SnapshotCommitTime, MinSnapshotTime,
