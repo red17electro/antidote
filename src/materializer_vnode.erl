@@ -230,7 +230,7 @@ handle_command({update, Key, DownstreamOp}, _Sender, State) ->
 handle_command({store_ss, Key, Snapshot, CommitTime}, _Sender, State) ->
 	case Snapshot#materialized_snapshot.value of
 		{big, _Max_Count, Tree, Table, _ID, _VV} ->
-			ok = antidote_crdt_orset : add_tokens(Tree, Table);
+			ok = antidote_crdt_bigset : add_tokens(Tree, Table);
 		_ -> 
 			ok
 		end,
@@ -427,7 +427,7 @@ get_from_snapshot_log(Key, Type, SnapshotTime) ->
 store_snapshot(TxId, Key, Snapshot, Time, ShouldGC, MatState) ->
 	case Snapshot#materialized_snapshot.value of
 		{big, _Max_Count, Tree, Table, _ID, _VV} ->
-			ok = antidote_crdt_orset : add_tokens(Tree, Table);
+			ok = antidote_crdt_bigset : add_tokens(Tree, Table);
 		_ -> 
 			ok
 		end,
@@ -534,7 +534,7 @@ belongs_to_snapshot_op(SSTime, {OpDc, OpCommitTime}, OpSs) ->
     OpSs1 = dict:store(OpDc, OpCommitTime, OpSs),
     not vectorclock:le(OpSs1, SSTime).
 
--spec fill_dict(map(), [antidote_crdt_orset:tablekey()])-> dict:dict().
+-spec fill_dict(map(), [antidote_crdt_bigset:tablekey()])-> dict:dict().
 fill_dict(Dict, []) ->
 	Dict;
 fill_dict(Dict, [Head|Rest])->
@@ -549,8 +549,8 @@ adjust_references([{big, _Max_Count, Tree, Table, _ID, _VV}=_BigSet|Rest], KeyDi
 	if 
 		Rest == [] ->
 			List = dict:to_list(New_Dict),
-			antidote_crdt_orset : remove_tokens(Table, List),
-			antidote_crdt_orset : delete_old(Table);
+			antidote_crdt_bigset : remove_tokens(Table, List),
+			antidote_crdt_bigset : delete_old(Table);
 		true ->
 			ok
 	end,
