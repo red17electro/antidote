@@ -229,7 +229,7 @@ handle_command({update, Key, DownstreamOp}, _Sender, State) ->
 
 handle_command({store_ss, Key, Snapshot, CommitTime}, _Sender, State) ->
 	case Snapshot#materialized_snapshot.value of
-		{big, Tree, Table, _VV} ->
+		{big, Tree, Table, _ID, _VV} ->
 			ok = antidote_crdt_bigset : add_tokens(Tree, Table);
 		_ -> 
 			ok
@@ -426,7 +426,7 @@ get_from_snapshot_log(Key, Type, SnapshotTime) ->
 
 store_snapshot(TxId, Key, Snapshot, Time, ShouldGC, MatState) ->
 	case Snapshot#materialized_snapshot.value of
-		{big, Tree, Table, _VV} ->
+		{big, Tree, Table, _ID, _VV} ->
 			ok = antidote_crdt_bigset : add_tokens(Tree, Table);
 		_ -> 
 			ok
@@ -543,14 +543,15 @@ fill_dict(Dict, [Head|Rest])->
 
 adjust_references([], _) ->
 	ok;
-adjust_references([{big, Tree, Table, _VV}=_BigSet|Rest], KeyDict) ->
+adjust_references([{big, Tree, Table, _ID, _VV}=_BigSet|Rest], KeyDict) ->
 	TableKeys = antidote_crdt_bigset_keytree : get_all(Tree),
 	New_Dict = fill_dict(KeyDict, TableKeys),
 	case Rest of 
 		[] ->
 			List = dict:to_list(New_Dict),
 			antidote_crdt_bigset : remove_tokens(Table, List),
-			antidote_crdt_bigset : delete_old(Table)
+			antidote_crdt_bigset : delete_old(Table);
+		_ -> ok
 	end,
 	adjust_references(Rest, New_Dict);
 adjust_references([_Entry|_Rest], _Dict) ->
