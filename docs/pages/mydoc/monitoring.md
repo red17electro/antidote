@@ -1,5 +1,5 @@
 ---
-title: Monitoring Antidote with prometheus
+title: Monitoring Antidote with Prometheus
 last_updated: Nov 20, 2017
 tags: [monitoring]
 sidebar: mydoc_sidebar
@@ -7,7 +7,7 @@ permalink: monitoring.html
 folder: mydoc/dev
 ---
 
-Antidote is configured to expose metrics to prometheus server.
+Antidote is configured to expose metrics to [Prometheus](https://prometheus.io/).
 At present, the metrics collected are operations per second, open transactions, staleness, aborted transactions and errors together with several virtual machine metrics.
 
 Follow the steps to start one Antidote node and view the metrics.
