@@ -22,11 +22,47 @@ entries:
     url: /quick_start.html
     output: web, pdf
 
-  - title: Java Client
-    url: /java_client.html
-    output: web, pdf
+  #- title: Installation
+  #  url: /setup.html
+  #  output: web, pdf
 
-  - title: Overview
+  - title: Users
+    output: web,pdf
+    folderitems:
+
+    - title: Tutorial
+      url: /java_client.html
+      output: web, pdf
+
+    - title: API
+      output: web, pdf
+      folderitems:
+
+      - title: Native API
+        url: /rawapi.html
+        output: web, pdf
+
+      - title: Datatypes
+        url: /crdts.html
+        output: web, pdf
+
+      - title: Protocol Buffer API
+        url: /api.html
+        output: web, pdf
+
+      - title: Commit hooks
+        url: /commit_hooks.html
+        output: web, pdf
+
+    - title: Configuration
+      output: web, pdf
+      folderitems:
+
+      - title: Configuration
+        url: /config.html
+        output: web, pdf
+
+  - title: Developers
     output: web, pdf
     folderitems:
 
@@ -39,45 +75,27 @@ entries:
       url: /architecture.html
       output: web, pdf
 
+    - title: Installation
+      url: /setup.html
+      output: web, pdf
+
+    - title: Monitoring
+      url: /monitoring.html
+      output: web, pdf
+
+    #- title: Running Tests
+
+    #- title: Running benchmarks
+
+
 #    - title: About the team
 #      url: /about.html
 #      output: web, pdf
 
-    - title: Support
-      url: /support.html
-      output: web, pdf
-
-  - title: Installation
-    url: /setup.html
+  - title: Support
+    url: /support.html
     output: web, pdf
 
-  - title: Configuration
-    output: web, pdf
-    folderitems:
-
-    - title: Configuration
-      url: /config.html
-      output: web, pdf
-
-  - title: API
-    output: web, pdf
-    folderitems:
-
-    - title: Native API
-      url: /rawapi.html
-      output: web, pdf
-
-    - title: Datatypes
-      url: /crdts.html
-      output: web, pdf
-
-    - title: Protocol Buffer API
-      url: /api.html
-      output: web, pdf
-
-    - title: Commit hooks
-      url: /commit_hooks.html
-      output: web, pdf
 
   - title: Release Notes
     output: web, pdf
