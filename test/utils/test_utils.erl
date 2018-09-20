@@ -170,8 +170,11 @@ start_node(Name, Config) ->
 
             Node;
         {error, already_started, Node} ->
-            ct:pal("Node ~p already started, reusing node but reloading modules and reseting state", [Node]),
-            reload_modules(Node),
+            ct:pal("Node ~p already started, reusing node and reloading modules and reseting state", [Node]),
+            case os:getenv("distributed", undefined) of
+                undefined -> ok;
+                _ -> reload_modules(Node)
+            end,
             Node;
         {error, Reason, Node} ->
             ct:pal("Error starting node ~w, reason ~w, will retry", [Node, Reason]),
@@ -531,6 +534,7 @@ schema_dir_path() ->
 
 
 reload_modules(Node) ->
+    % TODO better reload implementation
     ct:pal("Reloading module implementations"),
     LoadModule = fun({_Mod, Path}) ->
         case string:str(Path, "antidote") == 0 of
