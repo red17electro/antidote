@@ -34,7 +34,6 @@
     connect_cluster/1,
     get_node_name/1,
     descriptors/1,
-    web_ports/1,
     plan_and_commit/1,
     do_commit/1,
     try_nodes_ready/3,
@@ -64,25 +63,30 @@
 %% Common Test Initialization
 %% ===========================================
 
-init_single_dc(Suite, Config) ->
+init_single_dc(Suite, InitialConfig) ->
+    Config = [{test_suite, Suite} | InitialConfig],
     ct:pal("[~p]", [Suite]),
-    test_utils:at_init_testsuite(),
+    at_init_testsuite(),
 
     StartDCs = fun(Nodes) ->
-        test_utils:pmap(fun(N) -> test_utils:start_node(N, Config) end, Nodes)
+        pmap(fun(N) -> start_node(N, Config) end, Nodes)
                end,
-    [Nodes] = test_utils:pmap( fun(N) -> StartDCs(N) end, [[dev1]] ),
+
+    [Nodes] = pmap( fun(N) -> StartDCs(N) end, [[dev1]] ),
     [Node] = Nodes,
 
     [{clusters, [Nodes]} | [{nodes, Nodes} | [{node, Node} | Config]]].
 
 
-init_multi_dc(Suite, Config) ->
-    ct:pal("[~p]", [Suite]),
+init_multi_dc(Suite, InitialConfig) ->
 
+    Config = [{test_suite, Suite} | InitialConfig],
+    ct:pal("[~p]", [Suite]),
     at_init_testsuite(),
-    Clusters = test_utils:set_up_clusters_common([{suite_name, ?MODULE} | Config]),
+
+    Clusters = set_up_clusters_common(Config),
     Nodes = hd(Clusters),
+
     [{clusters, Clusters} | [{nodes, Nodes} | Config]].
         
 
@@ -95,11 +99,21 @@ at_init_testsuite() ->
     end.
 
 
+%%distributed_init() ->
+%%    CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
+%%    CodePath2 = filelib:wildcard("/home/work/git/antidote/_build/default/lib/*/ebin"),
+%%    CodePath3 = filelib:wildcard("/home/work/git/antidote/test/*"),
+%%    code:set_path(CodePath++CodePath2++CodePath3),
+%%    ct:pal("Initializing Modules! ~p", [code:get_path()]),
+%%    ok.
+
+
 %% ===========================================
 %% Node utilities
 %% ===========================================
 
 start_node(Name, Config) ->
+%%    distributed_init(),
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
     ct:log("Starting node ~p", [Name]),
 
@@ -129,30 +143,35 @@ start_node(Name, Config) ->
             filelib:ensure_dir(PlatformDir),
             filelib:ensure_dir(RingDir),
 
+            ok = set_distributed_env_variables(Node),
+            WebPort = network_utils:web_port(Name),
+
+
             ct:log("Setting environment for riak"),
             ok = rpc:call(Node, application, set_env, [riak_core, riak_state_dir, RingDir]),
             ok = rpc:call(Node, application, set_env, [riak_core, ring_creation_size, NumberOfVNodes]),
 
             ok = rpc:call(Node, application, set_env, [riak_core, platform_data_dir, PlatformDir]),
-            ok = rpc:call(Node, application, set_env, [riak_core, handoff_port, web_ports(Name) + 3]),
+            ok = rpc:call(Node, application, set_env, [riak_core, handoff_port, WebPort + 3]),
 
-            ok = rpc:call(Node, application, set_env, [riak_core, schema_dirs, ["../../_build/default/rel/antidote/lib/"]]),
+            ok = rpc:call(Node, application, set_env, [riak_core, schema_dirs, [schema_dir_path()]]),
 
-            ok = rpc:call(Node, application, set_env, [riak_api, pb_port, web_ports(Name) + 2]),
+            ok = rpc:call(Node, application, set_env, [riak_api, pb_port, WebPort + 2]),
             ok = rpc:call(Node, application, set_env, [riak_api, pb_ip, "127.0.0.1"]),
 
             ct:log("Starting antidote"),
             ok = rpc:call(Node, application, load, [antidote]),
-            ok = rpc:call(Node, application, set_env, [antidote, pubsub_port, web_ports(Name) + 1]),
-            ok = rpc:call(Node, application, set_env, [antidote, logreader_port, web_ports(Name)]),
-            ok = rpc:call(Node, application, set_env, [antidote, metrics_port, web_ports(Name) + 4]),
+            ok = rpc:call(Node, application, set_env, [antidote, pubsub_port, WebPort + 1]),
+            ok = rpc:call(Node, application, set_env, [antidote, logreader_port, WebPort]),
+            ok = rpc:call(Node, application, set_env, [antidote, metrics_port, WebPort + 4]),
 
             {ok, _} = rpc:call(Node, application, ensure_all_started, [antidote]),
-            ct:pal("Node ~p started with ports ~p-~p", [Node, web_ports(Name), web_ports(Name)+4]),
+            ct:pal("Node ~p started with ports ~p-~p", [Node, WebPort, WebPort+4]),
 
             Node;
         {error, already_started, Node} ->
-            ct:log("Node ~p already started, reusing node", [Node]),
+            ct:pal("Node ~p already started, reusing node but reloading modules and reseting state", [Node]),
+            reload_modules(Node),
             Node;
         {error, Reason, Node} ->
             ct:pal("Error starting node ~w, reason ~w, will retry", [Node, Reason]),
@@ -293,11 +312,6 @@ descriptors(Clusters) ->
   end, Clusters).
 
 
-web_ports(dev1) -> 10015;
-web_ports(dev2) -> 10025;
-web_ports(dev3) -> 10035;
-web_ports(dev4) -> 10045.
-
 %% Build clusters
 join_cluster(Nodes) ->
     ct:log("Joining: ~p", [Nodes]),
@@ -428,9 +442,9 @@ set_up_clusters_common(Config) ->
                   end,
 
     Clusters = pmap(
-            fun(N) -> StartDCs(N) end,
-            [[dev1, dev2], [dev3], [dev4]]
-        ),
+        fun(N) -> StartDCs(N) end,
+        cluster_config(Config)
+    ),
 
 
    [Cluster1, Cluster2, Cluster3] = Clusters,
@@ -453,3 +467,82 @@ bucket(BucketBaseAtom) ->
     Bucket = list_to_atom(atom_to_list(BucketBaseAtom) ++ BucketRandomSuffix),
     ct:log("Using random bucket: ~p", [Bucket]),
     Bucket.
+
+
+cluster_config(Config) ->
+    %%use distributed naming scheme if enabled
+    IsDistributed = os:getenv("distributed", undefined),
+
+    case IsDistributed of
+        undefined ->
+            [[dev1, dev2], [dev3], [dev4]];
+        _ ->
+            % test suite prefix prevents local node name collisions if distributed on shared node
+            SuiteName = atom_to_list(proplists:get_value(test_suite, Config)),
+            Dev1 = list_to_atom(SuiteName ++ "_" ++ atom_to_list(dev1)),
+            Dev2 = list_to_atom(SuiteName ++ "_" ++ atom_to_list(dev2)),
+            Dev3 = list_to_atom(SuiteName ++ "_" ++ atom_to_list(dev3)),
+            Dev4 = list_to_atom(SuiteName ++ "_" ++ atom_to_list(dev4)),
+            [[Dev1, Dev2], [Dev3], [Dev4]]
+    end.
+
+
+
+set_distributed_env_variables(Node) ->
+    %% set environment variables containing SUITE and the distributed flag
+    FilterSuites = fun(Env) ->
+        [Key, Value] = string:split(Env, "=", leading),
+
+        case string:str(Key, "SUITE") of
+            0 ->
+                case Key == "distributed" of
+                    true ->
+                        ct:pal("Setting distributed flag to ~p", [Value]),
+                        true = rpc:call(Node, os, putenv, [Key, Value]);
+                    false -> ok
+                end;
+            _ ->
+                ct:pal("Setting port of ~p to ~p", [Key, Value]),
+                true = rpc:call(Node, os, putenv, [Key, Value])
+        end,
+        case string:str(Key, "SUITE") of
+            0 ->
+                case Key == "distributed" of
+                    true ->
+                        ct:pal("Setting distributed flag to ~p", [Value]),
+                        true = rpc:call(Node, os, putenv, [Key, Value]);
+                    false -> ok
+                end;
+            _ ->
+                ct:pal("Setting port of ~p to ~p", [Key, Value]),
+                true = rpc:call(Node, os, putenv, [Key, Value])
+        end
+    end,
+    lists:foreach(FilterSuites, os:getenv()),
+    ok.
+
+
+schema_dir_path() ->
+    % load absolute path if distributed script is used
+    case os:getenv("riak_schema_dirs", undefined) of
+        undefined -> "../../_build/default/rel/antidote/lib/";
+        Dir -> Dir
+    end.
+
+
+reload_modules(Node) ->
+    ct:pal("Reloading module implementations"),
+    LoadModule = fun({_Mod, Path}) ->
+        case string:str(Path, "antidote") == 0 of
+            true -> ok;
+            _ ->
+                ct:pal("Path: ~p cond ~p", [Path, string:str(Path, "antidote") == 0]),
+                code:load_file(antidote),
+                ct:pal("Updating module ~p", [antidote]),
+                {antidote, Binary, Filename} = code:get_object_code(antidote),
+                rpc:call(Node, code, load_binary, [antidote, Filename, Binary])
+        end
+    end,
+    Modules = [{Module, Path} || {Module, Path} <- code:all_loaded(), Path =/= preloaded],
+    lists:foreach(LoadModule, Modules),
+    ok.

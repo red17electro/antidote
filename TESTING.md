@@ -79,6 +79,13 @@ The fixed test setup is as follows:
 * Data center one has two physical nodes
 
 
+#### Distributed Testing
+
+Start `runDist.sh` in the test folder.
+Run `ct_master:run("local_parallel_multidc.spec")` to execute tests in parallel.
+Consecutive runs require `make compile` for source code changes to apply.
+Test code changes are loaded automatically.
+
 
 Release Tests
 -------------
