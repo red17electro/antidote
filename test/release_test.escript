@@ -15,7 +15,7 @@ load(Dep) ->
 
 main(_) ->
     % load required code
-    [load(Dep) || Dep <- ["riak_pb", "antidote_pb", "protobuffs"]],
+    [load(Dep) || Dep <- ["riak_pb", "antidotec_pb", "protobuffs"]],
 
     % Try to read something:
     ok = test_transaction(20).

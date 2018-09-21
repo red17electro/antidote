@@ -12,7 +12,7 @@
                   riak_core,
                   antidote_crdt,
                   cuttlefish,
-                  antidote_pb,
+                  antidotec_pb,
                   erlzmq,
                   rand_compat,
                   runtime_tools,
